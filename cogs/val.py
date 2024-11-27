@@ -8,7 +8,7 @@ load_dotenv()
 
 from aiohttp import request
 
-from datetime import datetime
+from datetime import datetime, timezone
 from datetime import timedelta
 
 import pandas as pd
@@ -108,7 +108,7 @@ class val(commands.Cog):
 
         if player_df['puuid'].str.contains(val_player_obj.puuid).any():
             player_df.loc[player_df.puuid == val_player_obj.puuid, 'player'] = str(player)
-            delta = datetime.now() - datetime.strptime(player_df.loc[(player_df['puuid'] == val_player_obj.puuid), 'last_updated'].values[0], "%Y-%m-%dT%H:%M:%S.%fZ")
+            delta = datetime.now(timezone.utc) - datetime.fromisoformat(player_df.loc[(player_df['puuid'] == val_player_obj.puuid), 'last_updated'].values[0])
             if abs(delta.total_seconds()) > (5 * 60):
                 should_update_match_history = True
             self.playerdb.Players.update_one({'puuid': val_player_obj.puuid}, {'$set' :{'player': player, 'last_updated': last_updated, 'region':val_player_obj.region}})
@@ -274,7 +274,7 @@ class val(commands.Cog):
         try:
             player_uuid = player_df.loc[player_df.player.str.lower() == str(player).lower(), 'puuid'].values[0]
             player_region = player_df.loc[player_df.player.str.lower() == str(player).lower(), 'region'].values[0]
-            delta = datetime.now() - datetime.strptime(player_df.loc[(player_df['puuid'] == player_uuid), 'last_updated'].values[0], "%Y-%m-%dT%H:%M:%S.%fZ")
+            delta = datetime.now(timezone.utc) - datetime.fromisoformat(player_df.loc[(player_df['puuid'] == player_uuid), 'last_updated'].values[0])
             if abs(delta.total_seconds()) > (5 * 60):
                 should_update_match_history = True
         except (KeyError, IndexError):
