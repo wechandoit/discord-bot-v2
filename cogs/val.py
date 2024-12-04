@@ -432,9 +432,10 @@ class val(commands.Cog):
                                 "match_id": match_obj.match_id,
                                 "blue_score": match_obj.blue_score,
                                 "red_score": match_obj.red_score,
+                                "who_won": who_won,
                                 "match_players": player_data_list,
                                 "start_date": match_obj.start_date,
-                                "end_date": match_obj.end_date,
+                                "end_date": match_obj.end_date
                             }
                             
                             self.matchesdb['Match_Data'].insert_one(match_data)
