@@ -13,6 +13,10 @@ import numpy as np
 import pyspark.pandas as ps
 from pyspark.sql import SparkSession
 
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import seaborn as sns
+
 import json
 
 load_dotenv()
@@ -172,6 +176,18 @@ async def main():
         count += 1'''
 
     # Do stats: see how many kills the match mvp had on the winning team on average vs. rounds played
+    # Create a colormap for agents
+    agent_names = ['astra', 'breach', 'brimstone', 'chamber', 'clove', 'cypher', 'deadlock', 'fade', 'gekko', 'harbor', 'iso', 'jett', 'kay/o', 'killjoy', 'neon', 'omen', 'phoenix', 'raze', 'reyna', 'sage', 'skye', 'sova', 'viper', 'vyse', 'yoru']
+    agent_colors = {}
+    color_map = cm.get_cmap('tab20')
+    for i, agent in enumerate(set(val for val in agent_names)):
+        agent_colors[agent] = color_map(i)
+    
+    # Collect data for all players, color-coded by agent
+    all_player_kill_ratios = []
+    all_player_agent_colors = []
+    data = []
+
     count = 1
     for match_uuid in match_ids:
         match_row = matches_sdf[matches_sdf['match_id'] == match_uuid]
@@ -191,12 +207,27 @@ async def main():
                     ability_casts[key] = 0
 
             match_player_obj = match_player(player_data["name"], player_data["tag"], player_data["team_id"], player_data["agent"], player_data["kills"], player_data["deaths"], player_data["score"], player_data["assists"], player_data["headshots"], player_data["bodyshots"], player_data["legshots"], ability_casts["grenade"], ability_casts["ability1"], ability_casts["ability2"], ability_casts["ultimate"], player_data["tier"])
-            match_players.append(match_player_obj)
+            # match_players.append(match_player_obj)
 
-            print(f'({count}/{total_matches}) {match_uuid} | {total_rounds_played} | {match_player_obj.kills} | {round(match_player_obj.kills/total_rounds_played, 2)} | {round(match_player_obj.get_kda(), 2)} | {match_player_obj.agent_name}')
+            player_kill_ratio = match_player_obj.kills / total_rounds_played
+            all_player_kill_ratios.append(player_kill_ratio)
+            all_player_agent_colors.append(agent_colors[player_data["agent"]])
+
+            data.append([total_rounds_played, player_kill_ratio, match_player_obj.agent_name])
+
+            # print(f'({count}/{total_matches}) {match_uuid} | {total_rounds_played} | {match_player_obj.kills} | {round(match_player_obj.kills/total_rounds_played, 2)} | {round(match_player_obj.get_kda(), 2)} | {match_player_obj.agent_name}')
         count += 1
     
-    # Generate histogram of total rounds played vs. match mvp kills/total rounds played ratio
+    # Create a DataFrame from the data
+    df = pd.DataFrame(data, columns=["total_rounds_played", "player_kill_ratio", "agent"])
+
+    # Create the scatter plot with Seaborn
+    sns.scatterplot(x="total_rounds_played", y="player_kill_ratio", hue="agent", data=df, palette=agent_colors)
+    plt.xlabel("Total Rounds Played")
+    plt.ylabel("Player Kill Ratio")
+    plt.title("Total Rounds Played vs. Player Kill Ratio by Agent")
+    plt.show()
+
 
 
 class match_player():
