@@ -13,6 +13,8 @@ import numpy as np
 import pyspark.pandas as ps
 from pyspark.sql import SparkSession
 
+import json
+
 load_dotenv()
 
 API_KEY = os.getenv('VAL_API_KEY_2')
@@ -136,7 +138,10 @@ async def main():
 
     match_ids = matches_sdf.select('match_id').rdd.flatMap(lambda row: row).collect()
 
+    total_matches = len(match_ids)
+
     # See if we need to update the collection because of missing rows/values
+    '''count = 1
     for match_uuid in match_ids:
         match_row = matches_sdf[matches_sdf['match_id'] == match_uuid]
         match_data = match_row.collect()[0]
@@ -147,23 +152,53 @@ async def main():
         elif (str(match_data['server']) in EU_List): region = 'eu'
 
         if (str(match_data['who_won']).lower() == 'nan'):
-            print(f'Updating {match_uuid}... row: who_won does not exist')
+            print(f'({count}/{total_matches}) Updating {match_uuid}... row: who_won does not exist')
             async with request('GET', f'https://api.henrikdev.xyz/valorant/v4/match/{region}/{match_uuid}', headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
                     update_match_in_db(data, match_data, match_uuid, matchesdb)
                 elif response.status == 429:
-                    print('[Updater] rate limit reached, waiting 60 seconds for it to refresh!')
+                    print(f'({count}/{total_matches}) [Updater] rate limit reached, waiting 60 seconds for it to refresh!')
                     time.sleep(60)
                     async with request('GET', f'https://api.henrikdev.xyz/valorant/v4/match/{region}/{match_uuid}', headers=headers) as response:
                         if response.status == 200:
                             update_match_in_db(data, match_data, match_uuid, matchesdb)
                         else:
-                            print(f'Status {response.status} for match id: {match_uuid}')
+                            print(f'({count}/{total_matches})Status {response.status} for match id: {match_uuid}')
                 else:
-                    print(f'Status {response.status} for match id: {match_uuid}')
+                    print(f'({count}/{total_matches})Status {response.status} for match id: {match_uuid}')
         else:
-            print(f'Skipping {match_uuid}, object up to date!')
+            print(f'({count}/{total_matches}) Skipping {match_uuid}, object up to date!')
+        count += 1'''
+
+    # Do stats: see how many kills the match mvp had on the winning team on average vs. rounds played
+    count = 1
+    for match_uuid in match_ids:
+        match_row = matches_sdf[matches_sdf['match_id'] == match_uuid]
+        match_data = match_row.collect()[0]
+
+        # Get total rounds played
+        total_rounds_played = match_data['red_score'] + match_data['blue_score']
+
+        match_players = []
+        for player_data in match_data["match_players"]:
+            ability_casts = {}
+            for element in player_data["ability_casts"][1:len(player_data["ability_casts"])-1].split(','):
+                key, value = element.strip().split('=', 1)
+                try:
+                    ability_casts[key] = int(value)
+                except Exception:
+                    ability_casts[key] = 0
+
+            match_player_obj = match_player(player_data["name"], player_data["tag"], player_data["team_id"], player_data["agent"], player_data["kills"], player_data["deaths"], player_data["score"], player_data["assists"], player_data["headshots"], player_data["bodyshots"], player_data["legshots"], ability_casts["grenade"], ability_casts["ability1"], ability_casts["ability2"], ability_casts["ultimate"], player_data["tier"])
+            match_players.append(match_player_obj)
+
+            print(f'({count}/{total_matches}) {match_uuid} | {total_rounds_played} | {match_player_obj.kills} | {round(match_player_obj.kills/total_rounds_played, 2)} | {round(match_player_obj.get_kda(), 2)} | {match_player_obj.agent_name}')
+        count += 1
+    
+    # Generate histogram of total rounds played vs. match mvp kills/total rounds played ratio
+
+
 class match_player():
     def __init__(self, player_name, player_tag, team_id, agent_name, kills, deaths, score, assists, headshots, bodyshots, legshots, e_ability, c_ability, q_ability, x_ability, rank_in_match):
         self.player_name = player_name
@@ -177,22 +212,10 @@ class match_player():
         self.headshots = int(headshots)
         self.bodyshots = int(bodyshots)
         self.legshots = int(legshots)
-        if e_ability != None:
-            self.e_ability = int(e_ability)
-        else:
-            self.e_ability = 0
-        if c_ability != None:
-            self.c_ability = int(c_ability)
-        else:
-            self.c_ability = 0
-        if q_ability != None:
-            self.q_ability = int(q_ability)
-        else:
-            self.q_ability = 0
-        if x_ability != None:
-            self.x_ability = int(x_ability)
-        else:
-            self.x_ability = 0
+        self.e_ability = int(e_ability)
+        self.c_ability = int(c_ability)
+        self.q_ability = int(q_ability)
+        self.x_ability = int(x_ability)
         self.rank_in_match = rank_in_match
 
     def get_full_tag(self):
